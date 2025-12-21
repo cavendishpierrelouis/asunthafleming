@@ -1,29 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8" >
   <title>Control Room · Tennis</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Control Room Tennis — a CavBot-style neon court inside the grid. Hover/touch to serve, rally, score, and watch the logs update live." />
-  <meta name="robots" content="noindex, nofollow" />
- <!-- UNIVERSAL FAVICONS (2025 STANDARD) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" >
+  <meta name="description" content="Control Room Tennis — a CavBot-style neon court inside the grid. Hover/touch to serve, rally, score, and watch the logs update live." >
+  <meta name="robots" content="noindex, nofollow" >
+ 
+  <!-- UNIVERSAL FAVICONS (2025 STANDARD) -->
   <!-- Main Browser Icons -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="48x48" href="/assets/icons/favicon-48x48.png">
-  <link rel="icon" type="image/png" sizes="64x64" href="/assets/icons/favicon-64x64.png">
-  <link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="assets/icons/favicon-48x48.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/icons/favicon-64x64.png">
+  <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico">
 
   <!-- Apple Touch Icons (iPhone / iPad / Legacy Support) -->
-  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
-  <link rel="apple-touch-icon" sizes="152x152" href="/assets/icons/apple-touch-icon152x152.png">
-  <link rel="apple-touch-icon" sizes="120x120" href="/assets/icons/apple-touch-icon120x120.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="assets/icons/apple-touch-icon152x152.png">
+  <link rel="apple-touch-icon" sizes="120x120" href="assets/icons/apple-touch-icon120x120.png">
 
   <!-- Android / Progressive Web App Icons -->
-  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/android-chrome-192x192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="/assets/icons/android-chrome-512x512.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/android-chrome-192x192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/icons/android-chrome-512x512.png">
 
   <!-- Safari Pinned Tab Icon -->
-  <link rel="mask-icon" href="/assets/icons/safari-pinned-tab.svg" color="#b5d331">
+  <link rel="mask-icon" href="assets/icons/safari-pinned-tab.svg" color="#b5d331">
 
   <!-- Web App Manifest -->
   <link rel="manifest" href="/site.webmanifest">
@@ -31,12 +32,12 @@
   <!-- Browser Theme -->
   <meta name="theme-color" content="#0d1a2d">
   <meta name="msapplication-TileColor" content="#0d1a2d">
-  <meta name="msapplication-TileImage" content="/assets/icons/mstile-144x144.png">
-
-  <!-- CavBot shared visuals (YOU ALREADY HAVE THESE) -->
+  <meta name="msapplication-TileImage" content="assets/icons/mstile-144x144.png">
+  
+  <!-- CavBot shared visuals -->
   <link rel="stylesheet" href="cavcore/files/css/badge.css">
   <link rel="stylesheet" href="cavcore/files/css/head.css">
-  <link rel="stylesheet" href="/cavcore/games/tennis-cavbot/tennis-cavbot.css">
+  <link rel="stylesheet" href="cavcore/games/tennis-cavbot/tennis-cavbot.css">
 </head>
 
 <body class="error-page"
@@ -78,7 +79,7 @@
                 <span class="cavbot-dm-segment" data-text="Hover the grid to arm the serve. Move to start."></span><br><br>
                 <span class="cavbot-dm-segment" data-text="If you rage-quit, I log it."></span><br><br>
                 <span class="cavbot-dm-segment" data-text="If you need me: "></span>
-                <a href="mailto:flemingasuntha@gmail.com" class="cavbot-dm-email cavbot-dm-segment" data-text="flemingasuntha@gmail.com"></a><br><br>
+                <a href="mailto:hello@cavendishpierrelouis.io" class="cavbot-dm-email cavbot-dm-segment" data-text="hello@cavendishpierrelouis.io"></a><br><br>
                 <span class="cavbot-dm-segment" data-text="Serve when ready. No excuses."></span>
                 <span class="cavbot-dm-cursor" id="cavbot-dm-cursor">|</span>
               </p>
@@ -86,7 +87,7 @@
           </div>
         </div>
 
-        <div class="hud-meta" aria-label="Game status">
+        <div class="hud-meta" role="group" aria-label="Game status">
           <div class="hud-block">
             <div class="hud-kv"><span>Match</span><strong id="stat-match">01</strong></div>
             <div class="hud-kv"><span>Timer</span><strong id="stat-timer">0.00s</strong></div>
@@ -109,7 +110,7 @@
           <div class="arena-wrap">
 
             <!-- Scoreboard outside the grid -->
-            <div class="scoreboard scoreboard--dock" aria-label="Scoreboard">
+            <div class="scoreboard scoreboard--dock" role="group" aria-label="Scoreboard">
               <span class="score-pill"><span class="score-dot"></span>YOU <strong id="score-you">0</strong></span>
               <span style="opacity:.65;">·</span>
               <span class="score-pill"><span class="score-dot" style="filter:hue-rotate(80deg)"></span>CAVBOT <strong id="score-bot">0</strong></span>
@@ -118,7 +119,7 @@
             <div class="tennis-court" id="tennis-court" role="application" aria-label="Tennis court. Hover/touch to arm. Move to serve.">
               <span class="court-label">
                 CONTROL ROOM · TENNIS
-                <span class="tag">CAVBOT</span>
+                
               </span>
 
               <div class="tennis-net" aria-hidden="true"></div>
@@ -170,7 +171,7 @@
               <div class="ball" id="ball" aria-hidden="true"></div>
 
               <!-- Controls inside grid (same UI as futbol) -->
-              <div class="pitch-controls" aria-label="Court controls">
+              <div class="pitch-controls" role="group" aria-label="Court controls">
                 <button class="pitch-chip" id="btn-reset" type="button" aria-label="Reset match">
                   RESET <strong>R</strong>
                 </button>
@@ -186,7 +187,7 @@
           <aside class="console-log-wrap" aria-label="Game and chat logs">
 
             <!-- GAME LOG -->
-            <div class="console-section" aria-label="Game log section">
+            <div class="console-section" role="group" aria-label="Game log section">
               <div class="console-log-header">
                 <span>Game log</span>
                 <div class="console-log-indicators">
@@ -203,7 +204,7 @@
             </div>
 
             <!-- CHAT LOG (RESTORED EXACTLY UNDER GAME LOG) -->
-            <div class="console-section" aria-label="Chat log section">
+            <div class="console-section" role="group" aria-label="Chat log section">
               <div class="console-log-header">
                 <span>Chat log</span>
                 <div class="console-log-indicators">
@@ -228,7 +229,7 @@
       <footer class="powered" aria-label="Footer">
         <span>Powered by <a href="https://cavbot.io" aria-label="CavBot">CavBot</a></span>
 
-        <span class="cavcore-seal" aria-label="CavCore security seal">
+        <span class="cavcore-seal" role="group" aria-label="CavCore security seal">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path fill="rgba(255,255,255,0.92)" d="M12 2.6c.22 0 .44.06.64.16l7 3.4c.46.22.76.7.76 1.22v5.24c0 4.72-3.14 8.85-7.66 10.2a1.8 1.8 0 0 1-1.08 0C7.14 21.47 4 17.34 4 12.62V7.38c0-.52.3-1 .76-1.22l7-3.4c.2-.1.42-.16.64-.16Z"/>
             <path fill="rgba(0,0,0,0.55)" d="M10.4 12.8 8.6 11a1 1 0 0 0-1.42 1.42l2.52 2.52a1 1 0 0 0 1.44-.02l5.66-6.1a1 1 0 1 0-1.46-1.36l-4.94 5.34Z"/>
@@ -246,6 +247,6 @@
 <!-- Brain logic (window.cavbotBrain._internal.*) -->
 <script src="cavcore/files/js/cavbotbrain.js"></script>
 
-<script src="/cavcore/games/tennis-cavbot/tennis-cavbot.js"></script>
+<script src="cavcore/games/tennis-cavbot/tennis-cavbot.js"></script>
 </body>
 </html>
