@@ -1,6 +1,6 @@
 /* ==========================================================
-   Control Room Tennis · CavBot (hover-to-start + docked UI)
-   ========================================================== */
+  Control Room Tennis · CavBot (REAL ARCADE + 6 LEVEL CYCLE)
+========================================================== */
 (function(){
   'use strict';
 
@@ -54,9 +54,51 @@
 
   if(!court || !paddlePlayer || !paddleBot || !ballEl) return;
 
+  /* ==========================================================
+    LEVEL SYSTEM (6 levels, each VISIT advances, loops 1..6)
+    - Uses localStorage so it persists across visits
+    - If storage is blocked, falls back to sessionStorage
+  ========================================================== */
+  var LEVEL_KEY = 'cavbot_tennis_level_cycle_v1';
+
+  function safeGetStorage(){
+    try{ return window.localStorage; }catch(e){}
+    try{ return window.sessionStorage; }catch(e){}
+    return null;
+  }
+
+  function getVisitLevel(){
+    var store = safeGetStorage();
+    if(!store) return 1;
+
+    var raw = store.getItem(LEVEL_KEY);
+    var prev = parseInt(raw || '0', 10);
+    if(!isFinite(prev) || prev < 0) prev = 0;
+
+    var next = (prev % 6) + 1; // 1..6 loop
+    store.setItem(LEVEL_KEY, String(next));
+    return next;
+  }
+
+  // 6 curated levels (hardness ramps cleanly; 6 is brutal)
+  // Values are tuned for consistent feel across devices.
+  var LEVELS = [
+    { n:1, name:'Rookie',        factor:0.92, aiGain:6.5, aiMax:560, predict:0.58, lockChance:0.020, servePx:560,  accel:1.015 },
+    { n:2, name:'Contender',     factor:1.00, aiGain:7.4, aiMax:640, predict:0.66, lockChance:0.018, servePx:610,  accel:1.017 },
+    { n:3, name:'Operator',      factor:1.10, aiGain:8.4, aiMax:740, predict:0.74, lockChance:0.016, servePx:680,  accel:1.019 },
+    { n:4, name:'Hardline',      factor:1.22, aiGain:9.6, aiMax:860, predict:0.82, lockChance:0.014, servePx:760,  accel:1.021 },
+    { n:5, name:'Elite',         factor:1.36, aiGain:11.0,aiMax:980, predict:0.90, lockChance:0.012, servePx:860,  accel:1.023 },
+    { n:6, name:'Nightmare',     factor:1.52, aiGain:12.6,aiMax:1140,predict:1.00, lockChance:0.010, servePx:980,  accel:1.026 }
+  ];
+
+  function levelSpec(n){
+    var i = clamp((n|0) - 1, 0, 5);
+    return LEVELS[i];
+  }
+
   /* ---------------------------
-     Restore Route (same pattern)
-     --------------------------- */
+    Restore Route (same pattern)
+  --------------------------- */
   function getRestoreUrl(){
     try{
       var q = new URLSearchParams(window.location.search);
@@ -84,7 +126,7 @@
     restoreScheduled = true;
 
     logGame('ROUTE · RESTORE · armed · redirecting shortly', 'ok');
-    trackEvent('cavbot_tennis_route_restore', { reason: reason || 'scored_once', to: RESTORE_URL });
+    trackEvent('cavbot_tennis_route_restore', { reason: reason || 'scored_once', to: RESTORE_URL, level: state.level });
 
     setTimeout(function(){
       try{ window.location.assign(RESTORE_URL); }catch(e){ window.location.href = RESTORE_URL; }
@@ -92,8 +134,8 @@
   }
 
   /* ---------------------------
-     Logging
-     --------------------------- */
+    Logging
+  --------------------------- */
   function scrollToBottom(el){ if(el) el.scrollTop = el.scrollHeight; }
 
   function appendLog(inner, text, level, tsOverride){
@@ -129,34 +171,11 @@
   }
 
   function logGame(text, level){ appendLog(gameLogInner, text, level); }
-  function logChat(text, level, tsOverride){ appendLog(chatLogInner, text, level, tsOverride); } // restored
-
-  /* ---------------------------
-     Difficulty (same thresholds)
-     --------------------------- */
-  function difficultyTier(){
-    var w = analytics.tennisWins || 0;
-    var m = analytics.tennisMatches || 0;
-    var rate = m ? (w / m) : 0;
-
-    if(m >= 18 && rate >= 0.62) return 'Expert';
-    if(m >= 10 && rate >= 0.52) return 'Advanced';
-    if(m >= 4) return 'Intermediate';
-    return 'Rookie';
-  }
-
-  function difficultyFactor(tier){
-    switch(tier){
-      case 'Intermediate': return 1.12;
-      case 'Advanced': return 1.26;
-      case 'Expert': return 1.42;
-      default: return 1.0;
-    }
-  }
+  function logChat(text, level, tsOverride){ appendLog(chatLogInner, text, level, tsOverride); }
 
   /* ==========================================================
-     SOUND + ORIGINAL OST (“Neon Serve”)
-     ========================================================== */
+    SOUND + ORIGINAL OST (“Neon Serve”)
+  ========================================================== */
   var soundEnabled = false;
   var audioCtx = null;
   var masterGain = null;
@@ -295,7 +314,6 @@
     }
   }
 
-  // Tennis-flavored pattern (still “original synth”, no sampling)
   function scheduleMusicStep(step, t){
     var lead = [
       74,null,76,null, 79,null,76,null, 74,null,72,null, 71,null,72,null,
@@ -400,19 +418,27 @@
         logGame('SOUND · disabled', 'warn');
       }
 
-      trackEvent('cavbot_tennis_sound_toggle', { enabled: soundEnabled });
+      trackEvent('cavbot_tennis_sound_toggle', { enabled: soundEnabled, level: state.level });
     });
   }
 
   /* ---------------------------
-     Game state
-     --------------------------- */
+    Game state
+  --------------------------- */
   var state = {
+    // visit-based level
+    level: getVisitLevel(),
+    levelName: 'Rookie',
+
     match: analytics.tennisMatches + 1,
     matchStart: null,
     running: false,
     armed: false,
     raf: null,
+
+    // fixed timestep
+    lastFrameTs: 0,
+    acc: 0,
 
     w: 0, h: 0,
 
@@ -424,9 +450,10 @@
     botX: 0, botY: 0,
     bx: 0, by: 0,
 
-    // velocity
+    // velocity (px/s for real-time sim)
     bvx: 0, bvy: 0,
-    speed: 6.2,
+    serveSpeed: 620,
+    maxBallSpeed: 1200,
 
     // score
     you: 0,
@@ -443,14 +470,12 @@
     lastPlayerY: null,
     lastInputTs: performance.now(),
 
-    // AI
+    // AI (level-scaled)
     aiLock: 0,
-    aiReaction: 0.14,
-    aiMaxSpeed: 7.2,
-
-    // difficulty
-    tier: 'Rookie',
-    factor: 1,
+    aiGain: 7.4,        // proportional gain (1/s)
+    aiMaxSpeed: 680,    // px/s
+    aiPredict: 0.70,    // prediction scalar
+    aiLockChance: 0.016,
 
     // restore requirement
     scoredOnce: false
@@ -459,8 +484,8 @@
   function clamp(v, min, max){ return v < min ? min : (v > max ? max : v); }
 
   /* ---------------------------
-     Render
-     --------------------------- */
+    Render
+  --------------------------- */
   function render(){
     paddlePlayer.style.transform = 'translate(' + state.playerX.toFixed(2) + 'px,' + state.playerY.toFixed(2) + 'px)';
     paddleBot.style.transform = 'translate(' + state.botX.toFixed(2) + 'px,' + state.botY.toFixed(2) + 'px)';
@@ -484,17 +509,20 @@
       statRecordEl.textContent = (analytics.tennisWins||0) + 'W · ' + (analytics.tennisLosses||0) + 'L';
     }
     if(statDifficultyEl){
-      statDifficultyEl.textContent = state.tier;
+      // Uses your existing slot but now shows LEVEL (no HTML change)
+      var lv = 'L' + state.level;
+      statDifficultyEl.textContent = lv + ' · ' + state.levelName;
     }
   }
 
   /* ---------------------------
-     Idle “thumbnail stance”
-     - paddles centered on the net
-     - ball centered, no motion
-     --------------------------- */
+    Idle “thumbnail stance”
+  --------------------------- */
   function setIdlePositions(){
-    // centered paddles with a small gap around the net
+    // restore CSS transitions in idle stance
+    paddlePlayer.style.transition = '';
+    paddleBot.style.transition = '';
+
     var gap = 18;
     var centerX = (state.w / 2) - (state.paddleW / 2);
 
@@ -518,7 +546,6 @@
     state.w = r.width;
     state.h = r.height;
 
-    // clamp in-bounds
     state.playerY = clamp(state.playerY, 12, state.h - state.paddleH - 12);
     state.botY = clamp(state.botY, 12, state.h - state.paddleH - 12);
 
@@ -536,18 +563,15 @@
   window.addEventListener('resize', resize);
 
   /* ---------------------------
-     Input
-     - game does NOT start until hover/touch arms it + first movement
-     --------------------------- */
-  function noteInput(){
-    state.lastInputTs = performance.now();
-  }
+    Input (same behavior)
+  --------------------------- */
+  function noteInput(){ state.lastInputTs = performance.now(); }
 
   function armServe(){
     if(state.armed) return;
     state.armed = true;
     logGame('SERVE · armed (move to start)', 'ok');
-    trackEvent('cavbot_tennis_armed', { armed: true });
+    trackEvent('cavbot_tennis_armed', { armed: true, level: state.level });
   }
 
   function ensureStarted(){
@@ -571,9 +595,7 @@
     ensureStarted();
   }
 
-  court.addEventListener('mouseenter', function(){
-    armServe();
-  });
+  court.addEventListener('mouseenter', function(){ armServe(); });
 
   court.addEventListener('mousemove', function(e){
     armServe();
@@ -603,16 +625,20 @@
     }
   });
 
-  /* ---------------------------
-     Difficulty seeding
-     --------------------------- */
+  /* ==========================================================
+    LEVEL SEEDING (replaces win-rate tiering)
+  ========================================================== */
   function seedDifficulty(){
-    state.tier = difficultyTier();
-    state.factor = difficultyFactor(state.tier);
+    var spec = levelSpec(state.level);
+    state.levelName = spec.name;
 
-    state.aiReaction = 0.14 / state.factor;
-    state.aiMaxSpeed = 7.2 * state.factor;
-    state.speed = 6.2 * (0.92 + (state.factor * 0.12));
+    state.aiGain = spec.aiGain;
+    state.aiMaxSpeed = spec.aiMax;
+    state.aiPredict = spec.predict;
+    state.aiLockChance = spec.lockChance;
+
+    state.serveSpeed = spec.servePx;
+    state.maxBallSpeed = Math.max(980, Math.floor(spec.servePx * 1.55));
   }
 
   function resetPositions(servingTo){
@@ -626,44 +652,65 @@
     state.by = (state.h / 2) - 8;
 
     var dir = (servingTo === 'bot') ? 1 : -1;
-    var angle = (Math.random() * 0.9 - 0.45);
-    var base = state.speed;
 
-    state.bvx = dir * (base + Math.random() * 0.8);
-    state.bvy = angle * (base + Math.random() * 0.6);
+    // Serve angle: keeps it playable but varied
+    var angle = (Math.random() * 0.88 - 0.44);
+    var sp = state.serveSpeed;
+
+    state.bvx = dir * (sp * (0.95 + Math.random() * 0.10));
+    state.bvy = angle * (sp * (0.55 + Math.random() * 0.25));
 
     state.rally = 0;
     render();
   }
 
   /* ---------------------------
-     AI + physics
-     --------------------------- */
-  function updateAI(){
+    AI + physics (REAL-TIME)
+  --------------------------- */
+  function updateAI(dt){
     if(state.aiLock > 0){
       state.aiLock -= 1;
       return;
     }
 
-    var targetY = state.by - (state.paddleH / 2) + 8;
+    // Target the ball center, with prediction when ball is moving toward bot
+    var targetY = (state.by + 8) - (state.paddleH / 2);
 
     if(state.bvx > 0){
-      targetY += (state.bvy * 4.5) * (0.65 + (state.factor * 0.15));
+      // prediction scales with level (aiPredict 0.58..1.00)
+      targetY += (state.bvy * 0.18) * state.aiPredict; // px/s -> lookahead scalar
+      targetY += (state.bvy * 0.10) * (state.aiPredict); // extra read at higher levels
     }
 
     targetY = clamp(targetY, 12, state.h - state.paddleH - 12);
 
     var dy = targetY - state.botY;
-    var step = clamp(dy * state.aiReaction, -state.aiMaxSpeed, state.aiMaxSpeed);
-    state.botY = clamp(state.botY + step, 12, state.h - state.paddleH - 12);
 
-    if(Math.random() < (0.010 / state.factor)){
+    // Proportional controller with max speed
+    var desired = dy * state.aiGain;         // px/s
+    desired = clamp(desired, -state.aiMaxSpeed, state.aiMaxSpeed);
+
+    state.botY = clamp(state.botY + desired * dt, 12, state.h - state.paddleH - 12);
+
+    // occasional “lock” moments (lower chance at higher levels)
+    if(Math.random() < state.aiLockChance){
       state.aiLock = 8 + Math.floor(Math.random() * 10);
     }
   }
 
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh){
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function capBall(){
+    var vx = state.bvx, vy = state.bvy;
+    var sp = Math.sqrt(vx*vx + vy*vy);
+    var max = state.maxBallSpeed;
+    if(sp > max){
+      var k = max / sp;
+      state.bvx *= k;
+      state.bvy *= k;
+    }
   }
 
   function pointScored(winner){
@@ -675,8 +722,9 @@
       logGame('POINT · YOU · rally ' + state.rally, 'ok');
       if(soundEnabled) pointSfx();
 
-      trackEvent('cavbot_tennis_point', { winner:'you', you: state.you, bot: state.bot, rally: state.rally });
+      trackEvent('cavbot_tennis_point', { winner:'you', you: state.you, bot: state.bot, rally: state.rally, level: state.level });
 
+      // KEEP your reroute behavior: score once restores route
       if(!state.scoredOnce){
         state.scoredOnce = true;
         setTimeout(function(){ scheduleRestoreRedirect('scored_once'); }, 650);
@@ -689,7 +737,7 @@
       logGame('POINT · CAVBOT · rally ' + state.rally, 'warn');
       if(soundEnabled) pointSfx();
 
-      trackEvent('cavbot_tennis_point', { winner:'cavbot', you: state.you, bot: state.bot, rally: state.rally });
+      trackEvent('cavbot_tennis_point', { winner:'cavbot', you: state.you, bot: state.bot, rally: state.rally, level: state.level });
 
       resetPositions('you');
     }
@@ -698,7 +746,7 @@
       analytics.tennisBestRally = state.bestRallyThisMatch;
       persistAnalytics();
       logGame('ANALYTICS · new best rally: ' + analytics.tennisBestRally, 'ok');
-      trackEvent('cavbot_tennis_rally_record', { bestRally: analytics.tennisBestRally });
+      trackEvent('cavbot_tennis_rally_record', { bestRally: analytics.tennisBestRally, level: state.level });
     }
 
     render();
@@ -708,10 +756,11 @@
     }
   }
 
-  function updateBall(){
-    state.bx += state.bvx;
-    state.by += state.bvy;
+  function updateBall(dt){
+    state.bx += state.bvx * dt;
+    state.by += state.bvy * dt;
 
+    // walls
     if(state.by <= 10){
       state.by = 10;
       state.bvy *= -1;
@@ -723,45 +772,57 @@
 
     var ballX = state.bx, ballY = state.by, ballS = 16;
 
+    // PLAYER paddle collide (left)
     var pX = state.playerX, pY = state.playerY;
     if(rectsOverlap(ballX, ballY, ballS, ballS, pX, pY, state.paddleW, state.paddleH) && state.bvx < 0){
       state.bx = pX + state.paddleW + 1;
       state.bvx *= -1;
 
-      state.bvy += clamp(state.playerVel * 0.18, -2.2, 2.2);
-      state.bvx *= (1.03 + (state.factor * 0.01));
-      state.bvy *= 1.01;
+      // add player influence (spin) based on movement
+      state.bvy += clamp(state.playerVel * 9.0, -340, 340); // px/s impulse
+
+      // level-scaled acceleration (keeps rallies tense)
+      var spec = levelSpec(state.level);
+      state.bvx *= spec.accel;
+      state.bvy *= (1.008 + (spec.factor * 0.004));
+      capBall();
 
       state.rally += 1;
       state.bestRallyThisMatch = Math.max(state.bestRallyThisMatch, state.rally);
 
       if(soundEnabled) hitSfx();
-      trackEvent('cavbot_tennis_return', { who:'you', rally: state.rally });
+      trackEvent('cavbot_tennis_return', { who:'you', rally: state.rally, level: state.level });
 
       logGame('RETURN · YOU · rally ' + state.rally, 'ok');
     }
 
+    // BOT paddle collide (right)
     var bX = state.botX, bY = state.botY;
     if(rectsOverlap(ballX, ballY, ballS, ballS, bX, bY, state.paddleW, state.paddleH) && state.bvx > 0){
       state.bx = bX - ballS - 1;
       state.bvx *= -1;
 
+      // bot “aims” its return based on offset (stronger at higher levels)
       var center = bY + state.paddleH / 2;
       var offset = (state.by + 8) - center;
-      state.bvy += clamp(offset * 0.03 * state.factor, -2.6, 2.6);
 
-      state.bvx *= (1.02 + (state.factor * 0.02));
-      state.bvy *= 1.01;
+      var spec2 = levelSpec(state.level);
+      state.bvy += clamp(offset * (12.0 + spec2.factor * 6.5), -520, 520);
+
+      state.bvx *= (1.010 + (spec2.factor * 0.010));
+      state.bvy *= (1.008 + (spec2.factor * 0.006));
+      capBall();
 
       state.rally += 1;
       state.bestRallyThisMatch = Math.max(state.bestRallyThisMatch, state.rally);
 
       if(soundEnabled) hitSfx();
-      trackEvent('cavbot_tennis_return', { who:'cavbot', rally: state.rally });
+      trackEvent('cavbot_tennis_return', { who:'cavbot', rally: state.rally, level: state.level });
 
       logGame('RETURN · CAVBOT · rally ' + state.rally, 'warn');
     }
 
+    // scoring
     if(state.bx < -40){
       pointScored('cavbot');
     }
@@ -770,24 +831,51 @@
     }
   }
 
-  function loop(){
+  /* ==========================================================
+    FIXED TIMESTEP GAME LOOP (stops slow/fast randomness)
+  ========================================================== */
+  var FIXED_DT = 1/120;      // 120hz sim
+  var MAX_FRAME_DT = 0.05;   // clamp if tab was inactive
+
+  function step(dt){
+    updateAI(dt);
+    updateBall(dt);
+  }
+
+  function frame(ts){
     if(!state.running) return;
 
-    updateAI();
-    updateBall();
-    render();
+    if(!state.lastFrameTs) state.lastFrameTs = ts;
+    var dt = (ts - state.lastFrameTs) / 1000;
+    state.lastFrameTs = ts;
 
-    state.raf = requestAnimationFrame(loop);
+    dt = Math.min(dt, MAX_FRAME_DT);
+    state.acc += dt;
+
+    // run as many fixed steps as needed
+    var guard = 0;
+    while(state.acc >= FIXED_DT && guard < 10){
+      step(FIXED_DT);
+      state.acc -= FIXED_DT;
+      guard += 1;
+    }
+
+    render();
+    state.raf = requestAnimationFrame(frame);
   }
 
   /* ---------------------------
-     Match lifecycle
-     --------------------------- */
+    Match lifecycle
+  --------------------------- */
   function startMatch(isManualReset){
     restoreScheduled = false;
 
     seedDifficulty();
     resize();
+
+    // kill CSS paddle lag during gameplay (no CSS file change)
+    paddlePlayer.style.transition = 'none';
+    paddleBot.style.transition = 'none';
 
     state.match = analytics.tennisMatches + 1;
     state.matchStart = performance.now();
@@ -804,10 +892,17 @@
     state.playerVel = 0;
     state.lastPlayerY = null;
 
+    // reset sim timing
+    state.lastFrameTs = 0;
+    state.acc = 0;
+
     resetPositions('bot');
 
     logGame('CONTROL ROOM TENNIS · online · match ' + state.match, 'ok');
-    logGame('DIFFICULTY · ' + state.tier + ' · factor ' + state.factor.toFixed(2), 'ok');
+    logGame('LEVEL · ' + ('0'+state.level).slice(-2) + ' · ' + state.levelName, 'ok');
+    logGame('BOT · max ' + Math.round(state.aiMaxSpeed) + 'px/s · gain ' + state.aiGain.toFixed(1), 'ok');
+    logGame('BALL · serve ' + Math.round(state.serveSpeed) + 'px/s · cap ' + Math.round(state.maxBallSpeed) + 'px/s', 'ok');
+
     if(isManualReset){
       logGame('RESET · manual restart', 'warn');
       if(soundEnabled) blip(880, 45, 'square', 0.04);
@@ -815,7 +910,8 @@
 
     trackEvent('cavbot_tennis_match_start', {
       match: state.match,
-      difficulty: state.tier,
+      level: state.level,
+      levelName: state.levelName,
       wins: analytics.tennisWins,
       losses: analytics.tennisLosses,
       bestRally: analytics.tennisBestRally
@@ -824,7 +920,7 @@
     persistAnalytics();
 
     if(state.raf != null) cancelAnimationFrame(state.raf);
-    state.raf = requestAnimationFrame(loop);
+    state.raf = requestAnimationFrame(frame);
   }
 
   function endMatch(){
@@ -848,17 +944,18 @@
         logGame('ANALYTICS · fastest win: ' + (elapsedMs/1000).toFixed(2) + 's', 'ok');
       }
 
-      trackEvent('cavbot_tennis_match_end', { result:'win', scoreYou: state.you, scoreBot: state.bot, elapsedMs: elapsedMs });
+      trackEvent('cavbot_tennis_match_end', { result:'win', scoreYou: state.you, scoreBot: state.bot, elapsedMs: elapsedMs, level: state.level });
     } else {
       analytics.tennisLosses += 1;
       logGame('MATCH END · CAVBOT WINS · ' + state.you + '-' + state.bot + ' · time ' + (elapsedMs/1000).toFixed(2) + 's', 'warn');
       if(soundEnabled) winSfx();
-      trackEvent('cavbot_tennis_match_end', { result:'loss', scoreYou: state.you, scoreBot: state.bot, elapsedMs: elapsedMs });
+      trackEvent('cavbot_tennis_match_end', { result:'loss', scoreYou: state.you, scoreBot: state.bot, elapsedMs: elapsedMs, level: state.level });
     }
 
     persistAnalytics();
     session.tennisMatches = (session.tennisMatches || 0) + 1;
 
+    // keep your restore logic
     setTimeout(function(){
       scheduleRestoreRedirect('match_end');
     }, 1200);
@@ -872,8 +969,8 @@
   }
 
   /* ---------------------------
-     DM typewriter
-     --------------------------- */
+    DM typewriter
+  --------------------------- */
   function startDmTypewriter(){
     if(!dmSegments.length || !dmCursorEl) return;
     var segIndex = 0;
@@ -900,8 +997,8 @@
   }
 
   /* ---------------------------
-     DM badge pupils follow the ball (nice touch)
-     --------------------------- */
+    DM badge pupils follow the ball (unchanged)
+  --------------------------- */
   (function initAvatarEyesToBall(){
     var pupils = Array.prototype.slice.call(document.querySelectorAll('.cavbot-dm-eye-pupil'));
     if(!pupils.length) return;
@@ -934,17 +1031,18 @@
   })();
 
   /* ---------------------------
-     Boot
-     --------------------------- */
+    Boot
+  --------------------------- */
   logGame('CONTROL ROOM · ONLINE', 'ok');
   logGame('STACK · CAVCORE · GAME LAYER', 'ok');
   logGame('MODULE · CONTROL ROOM TENNIS', 'ok');
+  logGame('LEVEL ROTATION · this visit: L' + state.level + ' · next visit: L' + ((state.level % 6) + 1), 'ok');
   logGame('ANALYTICS · matches: ' + analytics.tennisMatches + ' · wins: ' + analytics.tennisWins + ' · losses: ' + analytics.tennisLosses, 'ok');
   if(analytics.tennisBestRally){
     logGame('ANALYTICS · best rally: ' + analytics.tennisBestRally, 'ok');
   }
 
-  // Seed chat log EXACTLY like the screenshot (same lines + timestamps)
+  // Seed chat log EXACTLY like your screenshot (same lines + timestamps)
   logChat('Okay. Deep breath. Now move …', 'tag', '15:43:48');
   logChat('That swing was a rumor.', 'tag', '15:43:54');
   logChat('Score update: you got nervous…', 'tag', '15:43:54');
@@ -955,5 +1053,8 @@
 
   // Initialize geometry & thumbnail stance, but DO NOT start match
   resize();
+  // ensure HUD shows the level even before match begins
+  seedDifficulty();
+  render();
 
 })();
